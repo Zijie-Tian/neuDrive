@@ -1634,9 +1634,17 @@ export function SignupPage() {
   const [providers, setProviders] = useState<AuthProvider[]>([])
   const [error, setError] = useState('')
   const [loadingAction, setLoadingAction] = useState('')
+  const [localMode, setLocalMode] = useState(false)
+
+  // Local signup form state
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [slug, setSlug] = useState('')
 
   useEffect(() => {
     api.getAuthProviders().then(setProviders).catch(() => setProviders([]))
+    api.getPublicConfig().then((cfg) => setLocalMode(!!cfg.local_mode)).catch(() => setLocalMode(false))
   }, [])
 
   const githubProvider = providers.find((provider) => provider.id === 'github')
@@ -1659,6 +1667,32 @@ export function SignupPage() {
     }
   }
 
+  const handleLocalSignup = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!email.trim() || !password || !displayName.trim() || !slug.trim()) {
+      setError(tx('请填写所有字段', 'Please fill in all fields'))
+      return
+    }
+    setLoadingAction('local')
+    setError('')
+    try {
+      const resp = await api.register({
+        email: email.trim(),
+        password,
+        display_name: displayName.trim(),
+        slug: slug.trim(),
+      })
+      localStorage.setItem('token', resp.access_token)
+      localStorage.setItem('refresh_token', resp.refresh_token)
+      window.location.href = '/'
+    } catch (err: any) {
+      setError(err?.message || tx('注册失败', 'Registration failed'))
+      setLoadingAction('')
+    }
+  }
+
+  const hasOAuth = githubEnabled || pocketEnabled
+
   return (
     <PublicShell>
       <main className="auth-split">
@@ -1668,12 +1702,76 @@ export function SignupPage() {
         </section>
         <section className="auth-card">
           {error && <div className="alert alert-warn">{error}</div>}
-          <button className="btn btn-primary btn-block" disabled={busy || !githubEnabled} onClick={() => { void beginProviderSignup(githubProvider, 'login', 'github') }}>
-            {loadingAction === 'github' ? tx('跳转中...', 'Redirecting...') : tx('使用 GitHub 继续', 'Continue with GitHub')}
-          </button>
-          <button className="btn btn-outline btn-block" disabled={busy || !pocketEnabled} onClick={() => { void beginProviderSignup(pocketProvider, 'signup', 'pocket') }}>
-            {loadingAction === 'pocket' ? tx('跳转中...', 'Redirecting...') : tx('邮箱登录 / 注册', 'Continue with email')}
-          </button>
+
+          {localMode && (
+            <form onSubmit={handleLocalSignup} className="local-auth-form" style={{ marginBottom: '1.5rem' }}>
+              <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder={tx('用户名 (唯一标识)', 'Username (unique)')}
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value)}
+                  required
+                  disabled={busy}
+                />
+              </div>
+              <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder={tx('显示名称', 'Display name')}
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  required
+                  disabled={busy}
+                />
+              </div>
+              <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                <input
+                  type="email"
+                  className="form-control"
+                  placeholder={tx('邮箱', 'Email')}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  disabled={busy}
+                />
+              </div>
+              <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                <input
+                  type="password"
+                  className="form-control"
+                  placeholder={tx('密码', 'Password')}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={busy}
+                />
+              </div>
+              <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
+                {loadingAction === 'local' ? tx('注册中...', 'Signing up...') : tx('创建账号', 'Create account')}
+              </button>
+            </form>
+          )}
+
+          {localMode && hasOAuth && (
+            <div className="auth-separator" style={{ textAlign: 'center', margin: '1rem 0', color: '#888', fontSize: '0.875rem' }}>
+              {tx('或使用以下方式', 'Or use')}
+            </div>
+          )}
+
+          {hasOAuth && (
+            <>
+              <button className="btn btn-primary btn-block" disabled={busy || !githubEnabled} onClick={() => { void beginProviderSignup(githubProvider, 'login', 'github') }}>
+                {loadingAction === 'github' ? tx('跳转中...', 'Redirecting...') : tx('使用 GitHub 继续', 'Continue with GitHub')}
+              </button>
+              <button className="btn btn-outline btn-block" disabled={busy || !pocketEnabled} onClick={() => { void beginProviderSignup(pocketProvider, 'signup', 'pocket') }}>
+                {loadingAction === 'pocket' ? tx('跳转中...', 'Redirecting...') : tx('邮箱登录 / 注册', 'Continue with email')}
+              </button>
+            </>
+          )}
+
           <p className="login-note">
             {tx('已有账户？', 'Already have an account?')} <Link to="/login">{tx('登录', 'Log in')}</Link>
           </p>

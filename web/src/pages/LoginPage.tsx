@@ -1,14 +1,20 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api, type AuthProvider } from '../api'
 import { useI18n } from '../i18n'
 import { PublicShell } from './PublicPages'
 
 export default function LoginPage() {
   const { tx } = useI18n()
+  const navigate = useNavigate()
   const [providers, setProviders] = useState<AuthProvider[]>([])
   const [error, setError] = useState('')
   const [loadingAction, setLoadingAction] = useState('')
+  const [localMode, setLocalMode] = useState(false)
+
+  // Local login form state
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
 
   useEffect(() => {
     document.title = tx('登录 — neuDrive', 'Log in — neuDrive')
@@ -18,6 +24,7 @@ export default function LoginPage() {
     const params = new URLSearchParams(window.location.search)
     setError(params.get('error') || '')
     api.getAuthProviders().then((items) => setProviders(items || [])).catch(() => setProviders([]))
+    api.getPublicConfig().then((cfg) => setLocalMode(!!cfg.local_mode)).catch(() => setLocalMode(false))
   }, [])
 
   const githubProvider = providers.find((provider) => provider.id === 'github')
@@ -44,6 +51,27 @@ export default function LoginPage() {
     }
   }
 
+  const handleLocalLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!email.trim() || !password) {
+      setError(tx('请填写邮箱和密码', 'Please enter email and password'))
+      return
+    }
+    setLoadingAction('local')
+    setError('')
+    try {
+      const resp = await api.login({ email: email.trim(), password })
+      localStorage.setItem('token', resp.access_token)
+      localStorage.setItem('refresh_token', resp.refresh_token)
+      window.location.href = redirectTarget()
+    } catch (err: any) {
+      setError(err?.message || tx('登录失败', 'Login failed'))
+      setLoadingAction('')
+    }
+  }
+
+  const hasOAuth = githubEnabled || pocketEnabled
+
   return (
     <PublicShell>
       <main className="auth-split">
@@ -57,24 +85,62 @@ export default function LoginPage() {
           <p className="login-desc">{tx('使用已有账号进入产品。', 'Use your existing account to enter the product.')}</p>
           {error && <div className="alert alert-warn">{error}</div>}
 
-          <div className="login-actions">
-            <button
-              type="button"
-              className="btn btn-primary btn-block"
-              onClick={() => { void handleProviderAction(githubProvider, 'github') }}
-              disabled={busy || !githubEnabled}
-            >
-              {loadingAction === 'github' ? tx('跳转中...', 'Redirecting...') : tx('使用 GitHub 登录', 'Continue with GitHub')}
-            </button>
-            <button
-              type="button"
-              className="btn btn-outline btn-block"
-              onClick={() => { void handleProviderAction(pocketProvider, 'pocket') }}
-              disabled={busy || !pocketEnabled}
-            >
-              {loadingAction === 'pocket' ? tx('跳转中...', 'Redirecting...') : tx('邮箱登录 / 注册', 'Continue with email')}
-            </button>
-          </div>
+          {localMode && (
+            <form onSubmit={handleLocalLogin} className="local-auth-form" style={{ marginBottom: '1.5rem' }}>
+              <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                <input
+                  type="email"
+                  className="form-control"
+                  placeholder={tx('邮箱', 'Email')}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  disabled={busy}
+                />
+              </div>
+              <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                <input
+                  type="password"
+                  className="form-control"
+                  placeholder={tx('密码', 'Password')}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={busy}
+                />
+              </div>
+              <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
+                {loadingAction === 'local' ? tx('登录中...', 'Signing in...') : tx('登录', 'Sign in')}
+              </button>
+            </form>
+          )}
+
+          {localMode && hasOAuth && (
+            <div className="auth-separator" style={{ textAlign: 'center', margin: '1rem 0', color: '#888', fontSize: '0.875rem' }}>
+              {tx('或使用以下方式', 'Or use')}
+            </div>
+          )}
+
+          {hasOAuth && (
+            <div className="login-actions">
+              <button
+                type="button"
+                className="btn btn-primary btn-block"
+                onClick={() => { void handleProviderAction(githubProvider, 'github') }}
+                disabled={busy || !githubEnabled}
+              >
+                {loadingAction === 'github' ? tx('跳转中...', 'Redirecting...') : tx('使用 GitHub 登录', 'Continue with GitHub')}
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-block"
+                onClick={() => { void handleProviderAction(pocketProvider, 'pocket') }}
+                disabled={busy || !pocketEnabled}
+              >
+                {loadingAction === 'pocket' ? tx('跳转中...', 'Redirecting...') : tx('邮箱登录 / 注册', 'Continue with email')}
+              </button>
+            </div>
+          )}
 
           <p className="login-note">
             {tx('还没有账户？', 'No account yet?')} <Link to="/signup">{tx('免费创建账号', 'Create free account')}</Link>
